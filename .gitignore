@@ -15,7 +15,10 @@ scripts/debug/
 # ============================================
 # Model Weights (too large)
 # ============================================
+checkpoint/
 checkpoints/
+**/checkpoint/
+**/checkpoints/
 *.ckpt
 *.pt
 *.pth
@@ -26,16 +29,20 @@ checkpoints/
 # Output Results
 # ============================================
 visualization/
+**/visualization/
+processed_dataset/
 *.glb
 *.ply
 *.obj
 *.stl
 
 # ============================================
-# DA3 and Data (root level only)
+# Datasets and Large Data
 # ============================================
 da3_outputs/
-/data/
+data/
+datasets/
+**/datasets/
 
 # ============================================
 # Log Files
@@ -106,3 +113,15 @@ tmp/
 temp/
 *.tmp
 *.bak
+
+# ============================================
+# Historical/Deprecated Local Artifacts
+# ============================================
+PLAN_NEXT_STEPS.md
+REMINDER_MVSAM3D_NEXT_RUN.md
+scripts/diagnose_thermal_projection.py
+scripts/diagnose_rgb_projection_alignment.py
+scripts/oneclick_setup_unified_env_experimental.sh
+scripts/nohup_run.sh
+scripts/nohup_wait.sh
+scripts/run_mvsam3d_batch.sh
