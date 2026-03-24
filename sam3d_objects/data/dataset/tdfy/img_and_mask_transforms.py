@@ -546,7 +546,7 @@ class ObjectCentricSSI(SSIPointmapNormalizer):
         mask_bool = mask_resized.reshape(-1) > 0.5
         mask_points = pointmap_flat[:, mask_bool]
 
-        # Debug 信息：统计 mask / pointmap 在当前视角下到底选到了多少有效点
+        # Debug info: summarize how many valid points are selected by mask/pointmap in this view.
         num_mask_pixels = mask_bool.sum().item()
         num_mask_points = mask_points.shape[1]
         num_valid_points = mask_points.isfinite().sum().item()
@@ -557,9 +557,9 @@ class ObjectCentricSSI(SSIPointmapNormalizer):
             f"num_valid_points={num_valid_points}"
         )
 
-        # 当掩码中没有任何有效点（例如单视角下目标完全不在 mask 中）时，
-        # mask_points 形状可能是 [3, 0]，此时直接对整个张量做 max() 会报错。
-        # 这里先检查 numel()，为 0 或全为非有限值时，走降级分支。
+        # When the mask contains no valid points (for example, object fully outside mask in a single view),
+        # mask_points may become shape [3, 0], and max() on the whole tensor would fail.
+        # Guard with numel()/finite checks first and fall back if needed.
         if mask_points.numel() == 0 or mask_points.isfinite().max() == 0:
             if self.raise_on_no_valid_points:
                 raise ValueError(f"No valid points found in mask")

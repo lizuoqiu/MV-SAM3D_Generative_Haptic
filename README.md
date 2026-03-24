@@ -1,191 +1,140 @@
-# MV-SAM3D: Adaptive Multi-View 3D Reconstruction
+# MV-SAM3D Generative Haptic Pipeline
 
-An enhanced multi-view extension for [SAM 3D Objects](https://github.com/facebookresearch/sam-3d-objects), featuring **adaptive fusion** strategies for improved 3D reconstruction quality from multiple viewpoints.
+This repository extends **SAM 3D Objects** to support a practical multi-stage workflow:
+- multi-view 3D reconstruction with weighted fusion,
+- SAM2 mask generation,
+- optional Depth Anything 3 (DA3) geometry integration,
+- thermal-to-mesh mapping and export for the Generative Haptic dataset.
 
-> 🔗 **Basic Version**: For a simpler averaging-based approach, check out our [basic multi-view fork](https://github.com/devinli123/multi-view-sam-3d-objects).
+The focus is not only model inference, but also end-to-end dataset processing.
 
-## 🔥 Highlights
+## What This Project Does
 
-- **Adaptive Multi-View Fusion**: Unlike simple averaging, we employ a confidence-aware fusion mechanism that automatically weighs contributions from different views based on their reliability.
+Given an object folder with multi-view RGB images (and optionally thermal frames), this project can:
+1. generate object masks with SAM2,
+2. reconstruct the 3D object with MV-SAM3D,
+3. align thermal frames to the reconstructed mesh,
+4. package outputs into a deployable dataset layout.
 
-- **Multiple Weighting Strategies**: 
-  - **Entropy-based**: Uses attention entropy as uncertainty measure
-  - **Visibility-based**: Uses self-occlusion detection via DDA ray tracing
-  - **Mixed**: Combines both strategies for robust weighting
+## Pipeline Overview
 
-- **Per-Latent Weighting**: Our method operates at the latent level, enabling fine-grained control over how information from different views is combined for each spatial location.
+1. **Environment setup**
+- Build/update `sam3d-objects` and `sam2d` conda environments.
 
-- **Improved Reconstruction Quality**: Better handling of occluded regions and view-dependent artifacts through intelligent fusion.
+2. **Dataset preparation**
+- Normalize dataset structure and generate `view_mapping.json` when needed.
 
-## 📢 Research in Progress
+3. **SAM2 masking**
+- Batch-generate RGBA masks (`alpha` channel is foreground).
 
-This is an **active research project**. We are continuously exploring new fusion strategies and will release updates as our research progresses.
+4. **MV-SAM3D reconstruction**
+- Run weighted or average multi-view reconstruction.
 
-## Results Comparison
-
-<table>
-<tr>
-  <td align="center" width="33%"><b>Single-View (View 3)</b></td>
-  <td align="center" width="33%"><b>Single-View (View 6)</b></td>
-  <td align="center" width="33%"><b>Multi-View (Adaptive Fusion)</b></td>
-</tr>
-<tr>
-  <td align="center" width="33%" style="padding: 5px;">
-    <b>Input Image</b><br>
-    <img src="data/example/images/3.png" width="100%" style="max-width: 300px;"/>
-  </td>
-  <td align="center" width="33%" style="padding: 5px;">
-    <b>Input Image</b><br>
-    <img src="data/example/images/6.png" width="100%" style="max-width: 300px;"/>
-  </td>
-  <td align="center" width="33%" style="padding: 5px;">
-    <b>Input Images</b><br>
-    <table width="100%" cellpadding="2" cellspacing="2">
-    <tr>
-      <td align="center"><img src="data/example/images/1.png" width="80px"/></td>
-      <td align="center"><img src="data/example/images/2.png" width="80px"/></td>
-      <td align="center"><img src="data/example/images/3.png" width="80px"/></td>
-      <td align="center"><img src="data/example/images/4.png" width="80px"/></td>
-    </tr>
-    <tr>
-      <td align="center"><img src="data/example/images/5.png" width="80px"/></td>
-      <td align="center"><img src="data/example/images/6.png" width="80px"/></td>
-      <td align="center"><img src="data/example/images/7.png" width="80px"/></td>
-      <td align="center"><img src="data/example/images/8.png" width="80px"/></td>
-    </tr>
-    </table>
-  </td>
-</tr>
-<tr>
-  <td align="center" colspan="3">
-    <b>↓ 3D Reconstruction ↓</b>
-  </td>
-</tr>
-<tr>
-  <td align="center" width="33%" style="padding: 5px;">
-    <b>3D Result</b><br>
-    <img src="data/example/visualization_results/view3_cropped.gif" width="100%" style="max-width: 300px;"/>
-  </td>
-  <td align="center" width="33%" style="padding: 5px;">
-    <b>3D Result</b><br>
-    <img src="data/example/visualization_results/view6_cropped.gif" width="100%" style="max-width: 300px;"/>
-  </td>
-  <td align="center" width="33%" style="padding: 5px;">
-    <b>3D Result</b><br>
-    <img src="data/example/visualization_results/all_views_cropped.gif" width="100%" style="max-width: 300px;"/>
-  </td>
-</tr>
-</table>
-
-## Installation
-
-Please follow the installation instructions in the [basic multi-view version](https://github.com/devinli123/multi-view-sam-3d-objects) or in [SAM 3D Objects](https://github.com/facebookresearch/sam-3d-objects).
+5. **Task-2 thermal mapping (optional)**
+- Compose thermal camera poses, project temperatures to mesh, render verification outputs, and package processed data.
 
 ## Quick Start
 
-### Basic Usage (Both Stages Weighted by Default)
+### 1) Setup environments
 
 ```bash
-python run_inference_weighted.py \
-    --input_path ./data/example \
-    --mask_prompt stuffed_toy \
-    --image_names 0,1,2,3,4,5,6,7
+bash scripts/bash/env/setup.bash
 ```
 
-### Disable All Weighting (Simple Average)
+Optional setup features:
 
 ```bash
-python run_inference_weighted.py \
-    --input_path ./data/example \
-    --mask_prompt stuffed_toy \
-    --image_names 0,1,2,3,4,5,6,7 \
-    --no_stage1_weighting --no_stage2_weighting
+bash scripts/bash/env/setup.bash --sam2-model large
+bash scripts/bash/env/setup.bash --install-depthanything
+bash scripts/bash/env/setup.bash --download-sam3d-model --hf-token "$HF_TOKEN"
 ```
 
-### Using Visibility Weighting (Requires DA3)
-
-To use visibility-based weighting for Stage 2, you need to first run Depth Anything 3 (DA3) to obtain camera poses:
-
-**Step 1: Install Depth Anything 3**
-
-Please follow the installation instructions at [Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3).
-
-**Step 2: Run DA3 to get camera poses**
+### 2) Setup + dataset download in one command
 
 ```bash
-python scripts/run_da3.py \
-    --image_dir ./data/example/images \
-    --output_dir ./da3_outputs/example
+bash scripts/bash/workflows/setup_and_download_dataset.sh
 ```
 
-**Step 3: Run weighted inference with visibility**
+### 3) One-click reconstruction pipeline (prepare + SAM2 + MV-SAM3D)
 
 ```bash
-python run_inference_weighted.py \
-    --input_path ./data/example \
-    --mask_prompt stuffed_toy \
-    --image_names 0,1,2,3,4,5,6,7 \
-    --da3_output ./da3_outputs/example/da3_output.npz \
-    --stage2_weight_source visibility
+bash scripts/bash/pipeline/oneclick_build_sam2_sam3d.sh <dataset_root>
 ```
 
-## Key Parameters
+### 4) Direct weighted inference for one object/folder
 
-### Basic
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--input_path` | Path to input directory | Required |
-| `--mask_prompt` | Mask folder name | None |
-| `--image_names` | Image names (comma-separated) | All images |
-| `--da3_output` | Path to DA3 output (for visibility weighting) | None |
-
-### Stage 1 (Shape) Weighting
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--no_stage1_weighting` | Disable Stage 1 weighting | False (enabled) |
-| `--stage1_entropy_layer` | Attention layer for weight computation | 9 |
-| `--stage1_entropy_alpha` | Entropy weighting sharpness | 30.0 |
-
-### Stage 2 (Texture) Weighting
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--no_stage2_weighting` | Disable Stage 2 weighting | False (enabled) |
-| `--stage2_weight_source` | `entropy`, `visibility`, or `mixed` | `entropy` |
-| `--stage2_entropy_alpha` | Entropy weighting sharpness | 30.0 |
-| `--stage2_visibility_alpha` | Visibility weighting sharpness | 30.0 |
-| `--stage2_attention_layer` | Attention layer for weight computation | 6 |
-| `--self_occlusion_tolerance` | Tolerance for visibility detection | 4.0 |
-
-### Visualization
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--visualize_weights` | Visualize fusion weights | False |
-| `--compute_latent_visibility` | Visualize latent visibility per view | False |
-| `--overlay_pointmap` | Overlay result on View 0 pointmap | False |
-| `--merge_da3_glb` | Merge result with DA3 scene | False |
-
-📖 **Full Parameters**: See [README_PARAMETERS.md](README_PARAMETERS.md) for detailed parameter documentation.
-
-### Data Structure
-
+```bash
+python scripts/python/inference/run_inference_weighted.py \
+  --input_path ./data/example \
+  --mask_prompt stuffed_toy \
+  --image_names 0,1,2,3,4,5,6,7
 ```
-input_path/
+
+### 5) Task-2 thermal batch processing
+
+```bash
+python scripts/python/thermal/run_task2_batch.py \
+  --dataset-root <dataset_root> \
+  --visualization-root <visualization_root> \
+  --thermal-intrinsics thermal_intrinsics.yaml
+```
+
+## Input Data Layout
+
+Typical object directory (for reconstruction + thermal mapping):
+
+```text
+<object_dir>/
+├── images/                 # RGB images for reconstruction
+├── thermal/                # Thermal images
+├── rgb/                    # RGB frames aligned with thermal sequence
+└── view_mapping.json       # RGB-to-thermal frame mapping
+```
+
+For weighted inference with masks, the input can also be:
+
+```text
+<input_path>/
 ├── images/
-│   ├── 0.png
-│   ├── 1.png
-│   └── ...
-└── object_name/  # mask folder
-    ├── 0.png
-    ├── 1.png
-    └── ...
+└── <mask_prompt>/          # RGBA masks, alpha channel is foreground
 ```
 
-**Mask Format**: RGBA format where alpha channel stores mask (alpha=255 for object, alpha=0 for background).
+## Key Output Locations
+
+- Reconstruction results: `visualization/<object_name>/<mask_name>/<run_id>/`
+- Processed thermal dataset: `processed_dataset/<category>/<object_name>/`
+- Task-2 batch report: `processed_dataset/task2_batch_report.json`
+
+## Repository Structure
+
+- `scripts/bash/`: orchestration scripts (setup, data, pipeline, thermal, workflows)
+- `scripts/python/`: Python entry scripts grouped by domain (`inference`, `sam2`, `data`, `da3`, `thermal`)
+- `sam3d_objects/`: core MV-SAM3D implementation
+- `sam2d/`: third-party dependency used by this project
+- `third_party/Depth-Anything-3/`: third-party dependency used by this project
+
+## Documentation Map
+
+### Core project docs
+- [README.md](README.md)
+- [README_PARAMETERS.md](README_PARAMETERS.md)
+- [WORK_PROGRESS_AND_HANDOFF.md](WORK_PROGRESS_AND_HANDOFF.md)
+- [doc/setup.md](doc/setup.md)
+
+### Script index
+- [scripts/README.md](scripts/README.md)
+
+### Third-party components used
+- [SAM2](https://github.com/facebookresearch/sam2)
+- [Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3)
 
 ## Acknowledgments
 
-This project builds upon [SAM 3D Objects](https://github.com/facebookresearch/sam-3d-objects) by Meta. We thank the original authors for their excellent work.
+This project builds on:
+- [SAM 3D Objects](https://github.com/facebookresearch/sam-3d-objects)
+- [SAM2](https://github.com/facebookresearch/sam2)
+- [Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3)
 
 ## License
 
-This project inherits the [SAM License](./LICENSE) from the original SAM 3D Objects project.
+This project follows the [LICENSE](LICENSE) in this repository.

@@ -1,121 +1,101 @@
-# MV-SAM3D + Thermal Mapping Progress Handoff (2026-03-13)
+# MV-SAM3D + Thermal Mapping Handoff (Updated: 2026-03-24)
 
-## Scope
-This document summarizes:
-- completed work and validated outputs,
-- open issues not yet solved,
-- script inventory and current readiness,
-- one-click entry points for setup and reconstruction.
+## Purpose
 
-## Completed Work
+This document captures the current operational state of the repository after the script reorganization and pipeline cleanup.
 
-### 1) Environment and dependencies
-- Miniconda-based environments were configured by `setup.bash`:
-  - `sam3d-objects` for MV-SAM3D and thermal mapping scripts
-  - `sam2d` for SAM2 mask generation
-- Depth Anything 3 integration is available via `scripts/run_da3.py` and verified in `sam3d-objects`.
+## What Changed in This Iteration
 
-### 2) Model/checkpoint setup
-- Hugging Face model files for `facebook/sam-3d-objects` were downloaded under:
-  - `checkpoints/hf/`
-- Missing/corrupted checkpoint artifacts were fixed (including `ss_generator.yaml` and checkpoint integrity).
+1. Script layout was reorganized into:
+- `scripts/bash/*` for orchestration
+- `scripts/python/*` for Python entrypoints
 
-### 3) Dataset preparation
-- Dataset structure preparation script implemented and used:
-  - `scripts/prepare_dataset_for_mvsam3d.py`
-- Per-object `images -> rgb` linkage and `view_mapping.json` generation are supported.
-
-### 4) SAM2 foreground masking
-- Batch SAM2 masking pipeline implemented:
-  - `scripts/run_sam2_batch_masks.sh`
-  - `scripts/sam2_segment_images.py`
-- Important format note:
-  - SAM2 masks are saved as **RGBA** images.
-  - Foreground mask is stored in the **alpha** channel.
-
-### 5) MV-SAM3D reconstruction
-- Batch and resume-capable reconstruction scripts implemented:
-  - `scripts/run_mvsam3d_remaining_batch.sh`
-- One-object reconstruction test completed successfully for:
-  - `data/datasets/generative_haptic_dataset_v2/Data_Mar6/bottleddrink_Mar7/bottleddrink1`
-
-### 6) Thermal mapping (Task 2)
-- Core scripts implemented:
-  - `scripts/compose_thermal_poses_from_da3.py`
-  - `scripts/map_thermal_to_mesh.py`
-  - `scripts/run_thermal_mapping.sh`
-  - `scripts/run_task2_for_object.sh`
-  - `scripts/run_task2_batch.py`
-  - `scripts/package_processed_object.py`
-  - `scripts/visualize_temperature_mapping.py`
-  - `scripts/visualize_task2_summary.py`
-- Processed output packaging implemented under:
-  - `processed_dataset/<category>/<object_name>/...`
-
-### 7) Calibration tooling
-- Standard OpenCV RGB-thermal stereo calibration script implemented:
-  - `scripts/calibrate_rgb_thermal_stereo.py`
-
-## Open Issues (Identified, Not Fully Solved Yet)
-
-### A) Thermal mapping geometric misalignment
-- Thermal fit quality is currently limited by geometric alignment.
-- For the tested object, thermal silhouette overlap metrics are low in many views.
-- Main likely causes:
-  - missing or inaccurate `T_thermal_from_rgb`,
-  - potential pose convention/scale mismatch between reconstruction mesh frame and DA3 pose frame,
-  - thermal distortion currently not fully integrated in mapping projection path.
-
-### B) Calibration still needed for production-quality mapping
-- Current Task-2 pipeline can run with identity transform fallback.
-- Identity fallback is only for bring-up/testing and is not expected to be physically correct.
-- A calibrated `T_thermal_from_rgb` should be generated and passed into Task 2 runs.
-
-## Clarified Non-Issue
-- SAM2 masks were previously suspected as all-white.
-- This was a read-mode mistake in diagnostics.
-- Actual masks are RGBA with valid alpha-mask foreground.
-
-## Key Output Locations
-- Reconstruction output example:
-  - `visualization/bottleddrink1/sam2_masks/bottleddrink1_sam2_masks_mv_s1a30_s2e30_20260313_033446/`
-- Processed dataset root:
-  - `processed_dataset/`
-
-## Script Readiness
-
-### Stable / ready for routine usage
+2. Legacy top-level wrappers were removed, including:
 - `setup.bash`
-- `scripts/prepare_dataset_for_mvsam3d.py`
-- `scripts/run_sam2_batch_masks.sh`
-- `scripts/run_mvsam3d_remaining_batch.sh`
-- `scripts/run_task2_for_object.sh`
-- `scripts/run_task2_batch.py`
-- `scripts/package_processed_object.py`
+- `setup_mvsam3d.sh`
+- flat `scripts/*.py` and `scripts/*.sh` wrappers that now live under `scripts/bash` or `scripts/python`
 
-### Verification scripts
-- `scripts/visualize_temperature_mapping.py`
-- `scripts/visualize_task2_summary.py`
+3. New/active utility coverage includes:
+- DA3 runner under `scripts/python/da3/`
+- thermal pipeline tooling under `scripts/python/thermal/`
+- workflow wrappers under `scripts/bash/workflows/`
 
-### Calibration scripts
-- `scripts/estimate_rgb_to_thermal_extrinsics.py`
-  - PnP from manual correspondences.
-- `scripts/calibrate_rgb_thermal_stereo.py`
-  - Standard OpenCV checkerboard stereo calibration (`stereoCalibrate`).
+## Current Stable Workflow
 
-## New One-Click Entry Scripts
+### A) Environment setup
 
-### 1) Environment setup (stable dual-env)
-- `scripts/oneclick_setup_dual_env.sh`
-- Wraps full setup and optional DA3/model download.
+```bash
+bash scripts/bash/env/setup.bash
+```
 
-### 2) Model building (SAM2 + MV-SAM3D)
-- `scripts/oneclick_build_sam2_sam3d.sh`
-- Performs dataset preparation, SAM2 batch mask generation, and MV-SAM3D reconstruction batch.
+### B) Optional setup + dataset download
 
-## Recommended Operational Path
-1. Use dual-env setup for reliability (`sam2d` + `sam3d-objects`).
-2. Run one-click SAM2+SAM3D reconstruction.
-3. Calibrate RGB-thermal transform with checkerboard script.
-4. Run Task 2 mapping with calibrated transform JSON.
-5. Use verification outputs before full batch packaging.
+```bash
+bash scripts/bash/workflows/setup_and_download_dataset.sh
+```
+
+### C) Full reconstruction flow (prepare + SAM2 + MV-SAM3D)
+
+```bash
+bash scripts/bash/pipeline/oneclick_build_sam2_sam3d.sh <dataset_root>
+```
+
+### D) Task-2 thermal batch flow
+
+```bash
+python scripts/python/thermal/run_task2_batch.py \
+  --dataset-root <dataset_root> \
+  --visualization-root <visualization_root> \
+  --thermal-intrinsics thermal_intrinsics.yaml
+```
+
+## Current Script Inventory
+
+### Setup and data
+- `scripts/bash/env/setup.bash`
+- `scripts/bash/data/download_and_extract_dataset.sh`
+- `scripts/bash/workflows/setup_and_download_dataset.sh`
+
+### Reconstruction
+- `scripts/bash/pipeline/oneclick_build_sam2_sam3d.sh`
+- `scripts/bash/pipeline/run_sam2_batch_masks.sh`
+- `scripts/bash/pipeline/run_mvsam3d_remaining_batch.sh`
+- `scripts/python/inference/run_inference.py`
+- `scripts/python/inference/run_inference_weighted.py`
+
+### Thermal / Task-2
+- `scripts/bash/thermal/run_task2_for_object.sh`
+- `scripts/bash/thermal/run_thermal_mapping.sh`
+- `scripts/python/thermal/run_task2_batch.py`
+- `scripts/python/thermal/compose_thermal_poses_from_da3.py`
+- `scripts/python/thermal/map_thermal_to_mesh.py`
+- `scripts/python/thermal/package_processed_object.py`
+- `scripts/python/thermal/visualize_temperature_mapping.py`
+- `scripts/python/thermal/visualize_task2_summary.py`
+- `scripts/python/thermal/convert_colored_ply_to_glb.py`
+
+### Data and DA3 helpers
+- `scripts/python/data/prepare_dataset_for_mvsam3d.py`
+- `scripts/python/data/inspect_dataset_structure.py`
+- `scripts/python/da3/run_da3.py`
+
+## Known Operational Risks
+
+1. Thermal mapping quality still depends heavily on accurate RGB-to-thermal extrinsics.
+2. Identity fallback transforms are useful for debugging only; they are not physically accurate.
+3. Before large batch runs, verify one object end-to-end (reconstruction + thermal projection + packaging).
+
+## Recommended Validation Checklist
+
+1. Confirm environments: `sam3d-objects`, `sam2d`.
+2. Verify SAM2 mask format (RGBA alpha mask) on one object.
+3. Verify reconstruction artifacts (`result.ply`, `result.glb`, logs).
+4. Verify thermal projection outputs (`*_thermal_avg.ply`, verification PNGs).
+5. Check packaged output under `processed_dataset/<category>/<object>/`.
+
+## Related Documentation
+
+- [README.md](README.md)
+- [README_PARAMETERS.md](README_PARAMETERS.md)
+- [scripts/README.md](scripts/README.md)
+- [doc/setup.md](doc/setup.md)

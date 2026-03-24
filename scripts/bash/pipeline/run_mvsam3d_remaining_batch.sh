@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
 if [[ $# -lt 1 ]]; then
   cat <<'USAGE' >&2
 Usage:
-  scripts/run_mvsam3d_remaining_batch.sh <dataset_root> [mask_dir_name] [stage2_weight_source] [exclude_object_path]
+  bash scripts/bash/pipeline/run_mvsam3d_remaining_batch.sh <dataset_root> [mask_dir_name] [stage2_weight_source] [exclude_object_path]
 
 Example:
-  scripts/run_mvsam3d_remaining_batch.sh \
+  bash scripts/bash/pipeline/run_mvsam3d_remaining_batch.sh \
     data/datasets/generative_haptic_dataset_v2/Data_Mar6 \
     sam2_masks \
     entropy \
@@ -74,7 +76,7 @@ while IFS= read -r -d '' image_dir; do
   fi
 
   echo "[mvsam3d-remaining] run object=${obj_dir}"
-  if python run_inference_weighted.py \
+  if python "${ROOT_DIR}/scripts/python/inference/run_inference_weighted.py" \
       --input_path "${obj_dir}" \
       --mask_prompt "${MASK_DIR_NAME}" \
       --model_tag "${MODEL_TAG}" \

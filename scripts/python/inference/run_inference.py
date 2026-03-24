@@ -4,16 +4,16 @@ Supports both single-view and multi-view 3D reconstruction
 
 Usage:
     # Multi-view inference (mask_prompt=None, images and masks in same directory, use all images)
-    python run_inference.py --input_path ./data/images_and_masks
+    python scripts/python/inference/run_inference.py --input_path ./data/images_and_masks
     
     # Single-view inference (specify a single image name)
-    python run_inference.py --input_path ./data/images_and_masks --image_names image1
+    python scripts/python/inference/run_inference.py --input_path ./data/images_and_masks --image_names image1
     
     # Multi-view inference (mask_prompt!=None, images in images/, masks in specified folder)
-    python run_inference.py --input_path ./data --mask_prompt stuffed_toy
+    python scripts/python/inference/run_inference.py --input_path ./data --mask_prompt stuffed_toy
     
     # Specify multiple image names (can be any filename without extension)
-    python run_inference.py --input_path ./data --mask_prompt stuffed_toy --image_names image1,view_a,2
+    python scripts/python/inference/run_inference.py --input_path ./data --mask_prompt stuffed_toy --image_names image1,view_a,2
 """
 import sys
 import argparse
@@ -21,8 +21,9 @@ from pathlib import Path
 from typing import List, Optional
 from loguru import logger
 
-# 导入推理代码
-sys.path.append("notebook")
+# Import inference code
+ROOT_DIR = Path(__file__).resolve().parents[3]
+sys.path.append(str(ROOT_DIR / "notebook"))
 from inference import Inference
 from load_images_and_masks import load_images_and_masks_from_path
 from sam3d_objects.utils.cross_attention_logger import CrossAttentionLogger
@@ -94,7 +95,7 @@ def get_output_dir(
     Returns:
         output_dir: Path to visualization/{mask_prompt_or_dirname}_{image_names}/ directory
     """
-    visualization_dir = Path("visualization")
+    visualization_dir = ROOT_DIR / "visualization"
     visualization_dir.mkdir(exist_ok=True)
     
     if mask_prompt:
@@ -159,12 +160,12 @@ def run_inference(
         attention_layers: Layer indices to record (supports negative indices)
         save_coords: Whether to save 3D spatial coordinates in SLAT attention files
     """
-    config_path = f"checkpoints/{model_tag}/pipeline.yaml"
-    if not Path(config_path).exists():
+    config_path = ROOT_DIR / "checkpoints" / model_tag / "pipeline.yaml"
+    if not config_path.exists():
         raise FileNotFoundError(f"Model config file not found: {config_path}")
     
     logger.info(f"Loading model: {config_path}")
-    inference = Inference(config_path, compile=False)
+    inference = Inference(str(config_path), compile=False)
     
     if hasattr(inference._pipeline, 'rendering_engine'):
         if inference._pipeline.rendering_engine != "pytorch3d":
@@ -189,7 +190,7 @@ def run_inference(
     is_single_view = num_views == 1
     output_dir = get_output_dir(input_path, mask_prompt, image_names, is_single_view)
     
-    # 将日志写入输出目录中的 inference.log，方便后续分析
+    # Write logs into the output directory for reproducible analysis.
     log_file = output_dir / "inference.log"
     logger.add(
         log_file,
@@ -296,16 +297,16 @@ def main():
         epilog="""
 Examples:
   # Multi-view inference (mask_prompt=None, images and masks in same directory, use all images)
-  python run_inference.py --input_path ./data/images_and_masks
+  python scripts/python/inference/run_inference.py --input_path ./data/images_and_masks
   
   # Single-view inference (specify a single image name)
-  python run_inference.py --input_path ./data/images_and_masks --image_names image1
+  python scripts/python/inference/run_inference.py --input_path ./data/images_and_masks --image_names image1
   
   # Multi-view inference (mask_prompt!=None, images in images/, masks in specified folder)
-  python run_inference.py --input_path ./data --mask_prompt stuffed_toy
+  python scripts/python/inference/run_inference.py --input_path ./data --mask_prompt stuffed_toy
   
   # Specify multiple image names (can be any filename without extension)
-  python run_inference.py --input_path ./data --mask_prompt stuffed_toy --image_names image1,view_a,2
+  python scripts/python/inference/run_inference.py --input_path ./data --mask_prompt stuffed_toy --image_names image1,view_a,2
         """
     )
     

@@ -1210,11 +1210,11 @@ class InferencePipeline:
         attention_logger: Optional[Any] = None,
     ) -> sp.SparseTensor:
         """
-        多视角结构化潜在生成
+        Multi-view structured latent generation.
         
         Args:
-            view_slat_input_dicts: each view的输入字典列表
-            coords: 坐标（从Stage 1得到）
+            view_slat_input_dicts: Input dictionaries for each view.
+            coords: Coordinates from Stage 1.
             inference_steps: Number of inference steps
             use_distillation: Whether to use distillation
             mode: 'stochastic' or 'multidiffusion'
@@ -1292,21 +1292,21 @@ class InferencePipeline:
         save_stage2_init_path: Optional[Any] = None,
     ) -> sp.SparseTensor:
         """
-        多视角结构化潜在生成（带加权融合，两阶段方法）
+        Multi-view structured latent generation with weighted fusion (two-phase).
         
-        流程：
-        1. Warmup Pass: 跑one step 收集 attention，compute weights
-        2. Main Pass: 用计算出的权重，从头start完整迭代
+        Workflow:
+        1. Warmup pass: run one step, collect attention, and compute weights.
+        2. Main pass: restart and run full iterations with computed weights.
         
         Args:
-            view_slat_input_dicts: each view的输入字典列表
-            coords: 坐标（从Stage 1得到）
+            view_slat_input_dicts: Input dictionaries for each view.
+            coords: Coordinates from Stage 1.
             inference_steps: Number of inference steps
             use_distillation: Whether to use distillation
-            attention_logger: 注意力记录器
-            weighting_config: 加权config
-            save_stage2_init: 是否保存 Stage 2 初始 latent
-            save_stage2_init_path: 保存路径
+            attention_logger: Attention logger.
+            weighting_config: Weighting config.
+            save_stage2_init: Whether to save Stage 2 initial latent.
+            save_stage2_init_path: Save path.
         """
         from sam3d_objects.pipeline.multi_view_weighted import (
             inject_weighted_multi_view_with_precomputed_weights,
@@ -1352,7 +1352,7 @@ class InferencePipeline:
                 # ============ Phase 1: Warmup Pass (1 step) ============
                 logger.info("[Stage 2 Weighted] Phase 1: Warmup pass to collect attention...")
                 
-                # 临时设置为只跑 1 步
+                # Temporarily run only one step.
                 original_steps = slat_generator.inference_steps
                 slat_generator.inference_steps = 1
                 
@@ -1361,13 +1361,13 @@ class InferencePipeline:
                     attention_logger.set_num_views(num_views)
                     attention_logger.set_view(0)
                 
-                # Createone临时的 attention 收集器
+                # Create a temporary in-memory attention collector.
                 attention_collector = AttentionCollector(
                     num_views=num_views,
                     target_layer=weighting_config.attention_layer,
                 )
                 
-                # 用simple average跑一步，同时收集 attention 到内存
+                # Run one step with simple averaging while collecting attention.
                 with inject_generator_multi_view_with_collector(
                     slat_generator,
                     num_views=num_views,
@@ -1379,14 +1379,14 @@ class InferencePipeline:
                         latent_shape, DEVICE, *condition_args, **condition_kwargs
                     )
                 
-                # 从内存中的 attention compute weights
+                # Compute weights from in-memory attention maps.
                 collected_attentions = attention_collector.get_attentions()
                 if collected_attentions:
                     for view_idx, attn in collected_attentions.items():
                         weight_manager.add_view_attention(view_idx, attn, step=0)
                     logger.info(f"[Stage 2 Weighted] Collected attention for {len(collected_attentions)} views")
                 
-                # Set downsample 映射（用于将权重从downsample维度expand tooriginal维度）
+                # Set downsample mapping (used to expand downsample weights to original resolution).
                 downsample_idx = attention_collector.get_downsample_idx()
                 original_coords = attention_collector.get_original_coords()
                 downsampled_coords = attention_collector.get_downsampled_coords()
@@ -1401,7 +1401,7 @@ class InferencePipeline:
                 else:
                     logger.warning("[Stage 2 Weighted] No downsample mapping found!")
                 
-                # Ifneed visibility，调用相应的 callback 计算
+                # If visibility is required, invoke the corresponding callback.
                 if weighting_config.weight_source in ["visibility", "mixed"]:
                     if weighting_config.visibility_callback is not None:
                         if downsampled_coords is not None:
@@ -1435,7 +1435,7 @@ class InferencePipeline:
                             "but none provided! Falling back to entropy-only if available."
                         )
                 
-                # Computedownsample维度的权重
+                # Compute weights in downsampled space.
                 weights_downsampled = weight_manager.compute_weights()
                 
                 if weights_downsampled and len(weights_downsampled) == num_views:
@@ -1443,7 +1443,7 @@ class InferencePipeline:
                     for v, w in weights_downsampled.items():
                         logger.info(f"  View {v} (downsampled): mean={w.mean():.4f}, std={w.std():.4f}")
                     
-                    # 扩展权重到original维度
+                    # Expand weights to original space.
                     weights_expanded = weight_manager.get_expanded_weights()
                     if weights_expanded:
                         logger.info(f"[Stage 2 Weighted] Expanded weights to original dimension")
@@ -1456,59 +1456,59 @@ class InferencePipeline:
                 # ============ Phase 2: Main Pass (full steps with weights) ============
                 logger.info(f"[Stage 2 Weighted] Phase 2: Main pass with {original_steps} steps...")
                 
-                # restore完整步数
+                # Restore full step count.
                 slat_generator.inference_steps = original_steps
                 
-                # 重新start attention logger（如果need保存完整的 attention）
+                # Restart attention logger if full attention needs to be saved.
                 if attention_logger is not None:
                     attention_logger.start_stage("slat")
                     attention_logger.set_num_views(num_views)
                 
-                # Generate初始噪声（用于保存和迭代）
+                # Generate initial noise (used for save/replay).
                 initial_noise = slat_generator._generate_noise(latent_shape, DEVICE)
                 
-                # Save Stage 2 初始 latent（如果need）
+                # Save Stage 2 initial latent if requested.
                 if save_stage2_init and save_stage2_init_path is not None:
                     logger.info(f"[Stage 2 Weighted] Saving Stage 2 initial latent to {save_stage2_init_path}")
-                    # Save所有need的info
+                    # Save all required metadata.
                     stage2_init_data = {
                         "coords": coords.cpu(),
                         "initial_noise": initial_noise.cpu() if torch.is_tensor(initial_noise) else initial_noise,
                         "latent_shape": latent_shape,
                         "num_views": num_views,
                         "inference_steps": original_steps,
-                        # Save条件编码（already embed 过的）
+                        # Save embedded condition encodings.
                         "condition_args": tuple(
                             arg.cpu() if torch.is_tensor(arg) else arg 
-                            for arg in condition_args[:-1]  # 排除 coords numpy
+                            for arg in condition_args[:-1]  # Exclude coords numpy array.
                         ),
-                        # Saveconfig
+                        # Save config snapshot.
                         "slat_cfg_strength": self.slat_cfg_strength,
                         "use_distillation": use_distillation,
                     }
                     torch.save(stage2_init_data, save_stage2_init_path)
                     logger.info(f"[Stage 2 Weighted] Stage 2 init saved: noise shape={initial_noise.shape if torch.is_tensor(initial_noise) else 'dict'}")
                 
-                # 临时替换 _generate_noise 方法，让它返回我们预先生成的噪声
+                # Temporarily replace _generate_noise to return precomputed noise.
                 original_generate_noise = slat_generator._generate_noise
                 def fixed_noise_generator(shape, device):
                     return initial_noise.to(device)
                 slat_generator._generate_noise = fixed_noise_generator
                 
-                # 用扩展后的权重进行完整迭代（使用指定的初始噪声）
+                # Run full iterations with expanded weights and fixed initial noise.
                 try:
                     with inject_weighted_multi_view_with_precomputed_weights(
                         slat_generator,
                         num_views=num_views,
                         num_steps=original_steps,
-                        precomputed_weights=weights_expanded,  # Use扩展后的权重
+                        precomputed_weights=weights_expanded,  # Use expanded weights.
                         attention_logger=attention_logger,
                     ):
                         slat = slat_generator(
                             latent_shape, DEVICE, *condition_args, **condition_kwargs
                         )
                 finally:
-                    # restoreoriginal的 _generate_noise 方法
+                    # Restore original _generate_noise method.
                     slat_generator._generate_noise = original_generate_noise
                 
                 logger.info(f"[Stage 2 Weighted] Generated slat shape: {slat[0].shape if isinstance(slat, (list, tuple)) else slat.shape}")
@@ -1526,7 +1526,7 @@ class InferencePipeline:
         self,
         view_images: List[Union[np.ndarray, Image.Image]],
         view_masks: List[Optional[Union[None, np.ndarray, Image.Image]]] = None,
-        view_pointmaps: Optional[List[Optional[np.ndarray]]] = None,  # 外部 pointmap
+        view_pointmaps: Optional[List[Optional[np.ndarray]]] = None,  # External pointmaps.
         num_samples: int = 1,
         seed: Optional[int] = None,
         stage1_inference_steps: Optional[int] = None,
@@ -1553,21 +1553,21 @@ class InferencePipeline:
         Main multi-view inference function
         
         Args:
-            view_images: each view的图像列表
-            view_masks: each view的掩码列表（可选）
-            view_pointmaps: each view的外部 pointmap 列表（可选）
-                - 格式: (3, H, W) 的 numpy array，PyTorch3D 坐标系
-                - 如果提供，将使用外部 pointmap 而不是内置深度模型计算
-                - can来自 DA3 等外部深度估计模型
-            num_samples: 生成样本数
-            seed: 随机种子
-            stage1_inference_steps: Stage 1推理步数
-            stage2_inference_steps: Stage 2推理步数
-            use_stage1_distillation: 是否使用Stage 1蒸馏
-            use_stage2_distillation: 是否使用Stage 2蒸馏
-            decode_formats: 解码格式
-            with_mesh_postprocess: 是否进行网格后处理
-            with_texture_baking: 是否进行纹理烘焙
+            view_images: Per-view image list.
+            view_masks: Per-view mask list (optional).
+            view_pointmaps: Per-view external pointmaps (optional).
+                - Format: (3, H, W) numpy array in PyTorch3D coordinates.
+                - If provided, external pointmaps are used instead of internal depth model output.
+                - Can come from external depth estimators such as DA3.
+            num_samples: Number of samples to generate.
+            seed: Random seed.
+            stage1_inference_steps: Stage 1 inference steps.
+            stage2_inference_steps: Stage 2 inference steps.
+            use_stage1_distillation: Whether to use Stage 1 distillation.
+            use_stage2_distillation: Whether to use Stage 2 distillation.
+            decode_formats: Decode formats.
+            with_mesh_postprocess: Whether to run mesh post-processing.
+            with_texture_baking: Whether to run texture baking.
             use_vertex_color: Whether to use vertex color
             stage1_only: Whether to only run Stage 1
             mode: 'stochastic' or 'multidiffusion'
@@ -1577,7 +1577,7 @@ class InferencePipeline:
             view_masks = [None] * num_views
         assert len(view_masks) == num_views, "Number of masks must match number of images"
         
-        # Process外部 pointmap
+        # Process external pointmaps.
         if view_pointmaps is not None:
             assert len(view_pointmaps) == num_views, "Number of pointmaps must match number of images"
             logger.info(f"Using external pointmaps for {sum(1 for p in view_pointmaps if p is not None)}/{num_views} views")
@@ -1589,31 +1589,31 @@ class InferencePipeline:
         
         logger.info(f"Running multi-view inference with {num_views} views, mode={mode}")
         
-        # 预处理each view
-        # Note：need先将mask合并到图像的alpha通道，then调用preprocess_image
+        # Preprocess each view.
+        # Merge mask into image alpha channel first, then call preprocess_image.
         view_ss_input_dicts = []
         view_slat_input_dicts = []
         raw_view_pointmaps: List[np.ndarray] = []
         for i, (image, mask, ext_pointmap) in enumerate(zip(view_images, view_masks, view_pointmaps)):
             logger.info(f"Preprocessing view {i+1}/{num_views}")
             
-            # 将mask合并到图像的alpha通道（RGBA格式）
-            # Ifimagealready是RGBA格式（从mask的alpha通道加载），maskpossible是None
+            # Merge mask into alpha channel (RGBA).
+            # If image is already RGBA (loaded from alpha-mask), mask may be None.
             if mask is not None:
-                # 确保image是numpy数组
+                # Ensure image is a numpy array.
                 if isinstance(image, Image.Image):
                     image = np.array(image)
                 else:
                     image = np.array(image)
                 
-                # 确保mask是numpy数组
+                # Ensure mask is a numpy array.
                 mask = np.array(mask)
                 
-                # Ifmask是bool类型，转换为uint8
+                # Convert bool mask to uint8.
                 if mask.dtype == bool:
                     mask = mask.astype(np.uint8) * 255
                 elif mask.dtype != np.uint8:
-                    # Ifmask是0-1范围的float，转换为0-255
+                    # Convert float mask in [0, 1] into [0, 255].
                     if mask.max() <= 1.0:
                         mask = (mask * 255).astype(np.uint8)
                     else:
@@ -1622,47 +1622,47 @@ class InferencePipeline:
                 if mask.ndim == 2:
                     mask = mask[..., None]
                 
-                # 合并mask到alpha通道
+                # Merge mask into alpha channel.
                 if image.shape[-1] == 3:  # RGB
                     rgba_image = np.concatenate([image, mask], axis=-1).astype(np.uint8)
-                elif image.shape[-1] == 4:  # already是RGBA，替换alpha通道
+                elif image.shape[-1] == 4:  # Already RGBA, replace alpha channel.
                     rgba_image = np.concatenate([image[..., :3], mask], axis=-1).astype(np.uint8)
                 else:
                     raise ValueError(f"Unexpected image shape: {image.shape}")
             else:
-                # If没有mask，假设imagealready是RGBA格式
+                # If no mask is provided, assume image is already RGBA.
                 if isinstance(image, Image.Image):
                     rgba_image = np.array(image)
                 else:
                     rgba_image = np.array(image)
             
-            # Convert为PIL Image（preprocess_imageneed）
+            # Convert to PIL image (required by preprocess_image).
             rgba_image_pil = Image.fromarray(rgba_image)
             
-            # 调用preprocess_image（注意：InferencePipelinePointMapneedpointmap）
-            # 先检查是否是InferencePipelinePointMap
+            # Call preprocess_image; InferencePipelinePointMap may need a pointmap.
+            # Check pointmap support first.
             if hasattr(self, 'compute_pointmap'):
-                # 这是InferencePipelinePointMap，need计算或使用外部pointmap
+                # InferencePipelinePointMap: compute pointmap or use external pointmap.
                 if ext_pointmap is not None:
-                    # Use外部提供的 pointmap（来自 DA3 等）
-                    # ext_pointmap 格式: (3, H, W) numpy array
+                    # Use externally provided pointmap (for example from DA3).
+                    # ext_pointmap format: (3, H, W) numpy array.
                     # 
-                    # 重要：need调用 compute_pointmap 来应用坐标变换！
-                    # compute_pointmap 会：
-                    #   1. 对 DA3 pointmap 翻转 Y 和 Z（使其与 MoGe original输出一致）
-                    #   2. 应用 camera_to_pytorch3d_camera 变换
-                    #   3. 返回 PyTorch3D 空间的 pointmap
+                    # Important: call compute_pointmap to apply coordinate transforms.
+                    # compute_pointmap will:
+                    #   1. adapt DA3 pointmap to expected convention,
+                    #   2. apply camera_to_pytorch3d_camera transform,
+                    #   3. return pointmap in PyTorch3D space.
                     logger.info(f"  View {i+1}: Using external pointmap, shape={ext_pointmap.shape}")
                     ext_pointmap_tensor = torch.from_numpy(ext_pointmap).float()
                     pointmap_dict = self.compute_pointmap(rgba_image_pil, pointmap=ext_pointmap_tensor)
                     pointmap = pointmap_dict["pointmap"]
                 else:
-                    # 用内置模型计算 pointmap
+                    # Compute pointmap using the built-in model.
                     pointmap_dict = self.compute_pointmap(rgba_image_pil, pointmap=None)
                     pointmap = pointmap_dict["pointmap"]
                 
-                # Save真实尺度的 pointmap（用于visualization对齐）
-                # Note：此时 pointmap already在 PyTorch3D 空间，无论是 MoGe 还是 DA3
+                # Save metric-scale pointmap for visualization alignment.
+                # At this stage, pointmap is already in PyTorch3D space (MoGe or DA3).
                 if pointmap is not None:
                     pointmap_metric = pointmap.detach()
                     if hasattr(type(self), "_down_sample_img"):
@@ -1677,7 +1677,7 @@ class InferencePipeline:
                     rgba_image_pil, self.slat_preprocessor
                 )
             else:
-                # 这是InferencePipeline，不needpointmap
+                # Standard InferencePipeline: no pointmap support.
                 if ext_pointmap is not None:
                     logger.warning(f"  View {i+1}: External pointmap provided but pipeline doesn't support it (not InferencePipelinePointMap)")
                 ss_input_dict = self.preprocess_image(
@@ -1690,7 +1690,7 @@ class InferencePipeline:
             view_ss_input_dicts.append(ss_input_dict)
             view_slat_input_dicts.append(slat_input_dict)
         
-        # Stage 1: 生成稀疏结构
+        # Stage 1: sample sparse structure.
         logger.info("Stage 1: Sampling sparse structure...")
         ss_return_dict = self.sample_sparse_structure_multi_view(
             view_ss_input_dicts,
@@ -1739,13 +1739,13 @@ class InferencePipeline:
             ss_return_dict["voxel"] = ss_return_dict["coords"][:, 1:] / 64 - 0.5
             return ss_return_dict
         
-        # Stage 2: 生成结构化潜在
+        # Stage 2: sample structured latent.
         coords = ss_return_dict["coords"]
         logger.info("Stage 2: Sampling structured latent...")
         
         weight_manager = None
         if weighting_config is not None:
-            # Use加权融合
+            # Use weighted fusion.
             logger.info("Using weighted multi-view fusion")
             
             # Set object pose for visibility computation (if needed)
@@ -1771,7 +1771,7 @@ class InferencePipeline:
                 save_stage2_init_path=save_stage2_init_path,
             )
         else:
-            # Useoriginal的simple average融合
+            # Use original simple-average fusion.
             slat = self.sample_slat_multi_view(
                 view_slat_input_dicts,
                 coords,
@@ -1793,13 +1793,13 @@ class InferencePipeline:
         result = {
             **ss_return_dict,
             **outputs,
-            "view_ss_input_dicts": view_ss_input_dicts,  # Save以便 overlay 使用
+            "view_ss_input_dicts": view_ss_input_dicts,  # Save for overlay usage.
         }
         
         if raw_view_pointmaps:
             result["raw_view_pointmaps"] = raw_view_pointmaps
         
-        # If使用了加权融合，添加权重info
+        # If weighted fusion is used, include weight info.
         if weight_manager is not None:
             result["weight_manager"] = weight_manager
         

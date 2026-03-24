@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
 if [[ $# -lt 1 ]]; then
   cat <<'USAGE' >&2
 Usage:
-  scripts/run_sam2_batch_masks.sh <dataset_root> [images_subdir] [mask_dir_name] [cutout_dir_name]
+  bash scripts/bash/pipeline/run_sam2_batch_masks.sh <dataset_root> [images_subdir] [mask_dir_name] [cutout_dir_name]
 
 Example:
-  scripts/run_sam2_batch_masks.sh data/datasets/generative_haptic_dataset_v2 images sam2_masks rgb_cutout
+  bash scripts/bash/pipeline/run_sam2_batch_masks.sh data/datasets/generative_haptic_dataset_v2 images sam2_masks rgb_cutout
 USAGE
   exit 2
 fi
@@ -20,7 +22,7 @@ CUTOUT_DIR_NAME="${4:-rgb_cutout}"
 MINICONDA_DIR="${MINICONDA_DIR:-$HOME/miniconda3}"
 SAM2_ENV="${SAM2_ENV:-sam2d}"
 SAM2_MODEL="${SAM2_MODEL:-small}"  # tiny|small|base_plus|large
-SAM2_REPO_DIR="${SAM2_REPO_DIR:-$(pwd)/sam2d}"
+SAM2_REPO_DIR="${SAM2_REPO_DIR:-${ROOT_DIR}/sam2d}"
 
 if [[ ! -d "${DATASET_ROOT}" ]]; then
   echo "Dataset root does not exist: ${DATASET_ROOT}" >&2
@@ -69,7 +71,7 @@ while IFS= read -r -d '' image_dir; do
   meta_json="${obj_dir}/${MASK_DIR_NAME}_metadata.json"
 
   echo "[sam2-batch] object=${obj_dir}"
-  python scripts/sam2_segment_images.py \
+  python "${ROOT_DIR}/scripts/python/sam2/sam2_segment_images.py" \
     --image-dir "${image_dir}" \
     --output-mask-dir "${mask_dir}" \
     --output-cutout-dir "${cutout_dir}" \

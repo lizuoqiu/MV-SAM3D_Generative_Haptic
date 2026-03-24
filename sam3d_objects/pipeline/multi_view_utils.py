@@ -8,7 +8,7 @@ from typing import Literal, Optional
 import torch
 from loguru import logger
 
-# Pose 相关的 key，这些不应该被平均
+# Pose-related keys that should not be averaged across views.
 POSE_KEYS = {
     'translation', 'rotation', 'scale', 'translation_scale',
     '6drotation', '6drotation_normalized',
@@ -53,7 +53,7 @@ def inject_generator_multi_view(
     original_dynamics = generator._generate_dynamics
     
     if mode == 'stochastic':
-        # Stochastic mode: 每一步随机选择一个视角
+        # Stochastic mode: randomly choose one view at each step.
         if num_views > num_steps:
             logger.warning(
                 f"Warning: number of views ({num_views}) is greater than number of steps ({num_steps}). "
@@ -88,21 +88,21 @@ def inject_generator_multi_view(
         generator._generate_dynamics = _new_dynamics_stochastic
         
     elif mode == 'multidiffusion':
-        # Multidiffusion mode: 每一步融合所有视角的预测
+        # Multidiffusion mode: fuse predictions from all views at each step.
         dt = 1.0 / num_steps
         
         def _new_dynamics_multidiffusion(x_t, t, *args_conditionals, **kwargs_conditionals):
             """
             Multidiffusion mode: fuse predictions from all views.
             
-            Shape: 用平均 velocity 更新
+            Shape: update using averaged velocity.
             Pose: 
-                - 默认模式: 只用 View 0 的 velocity
-                - Per-view 模式: 每个视角用自己的 velocity 更新自己的 pose
+                - Default mode: only use View 0 velocity.
+                - Per-view mode: each view updates its own pose using its own velocity.
             """
             nonlocal all_view_states_storage
             
-            # 找到 condition tokens 在 args 中的位置
+            # Locate where condition tokens appear in args.
             cond_idx = 0
             if len(args_conditionals) > 0:
                 if isinstance(args_conditionals[0], (int, float)) or \
@@ -114,7 +114,7 @@ def inject_generator_multi_view(
             
             cond_tokens = args_conditionals[cond_idx]
             
-            # 日志（只打印一次）
+            # Log once.
             if not hasattr(_new_dynamics_multidiffusion, '_logged_cond_shape'):
                 logger.info(f"[Multidiffusion] num_views: {num_views}, cond_idx: {cond_idx}")
                 if isinstance(cond_tokens, torch.Tensor):
@@ -123,7 +123,7 @@ def inject_generator_multi_view(
                     logger.info(f"[Multidiffusion] Condition tokens: list/tuple, length={len(cond_tokens)}")
                 _new_dynamics_multidiffusion._logged_cond_shape = True
             
-            # 解析每个视角的 condition
+            # Parse condition tokens for each view.
             if isinstance(cond_tokens, (list, tuple)):
                 view_conditions = cond_tokens
             elif isinstance(cond_tokens, torch.Tensor) and cond_tokens.shape[0] == num_views:

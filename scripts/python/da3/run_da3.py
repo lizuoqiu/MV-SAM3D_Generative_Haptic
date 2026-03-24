@@ -10,13 +10,13 @@ This script runs DA3 on a folder of images and outputs:
 The outputs can be used as input to MV-SAM3D for improved 3D reconstruction.
 
 Usage:
-    python scripts/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example
+    python scripts/python/da3/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example
     
     # With custom resolution
-    python scripts/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example --process_res 756
+    python scripts/python/da3/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example --process_res 756
     
     # Without visualization (faster)
-    python scripts/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example --no_vis
+    python scripts/python/da3/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example --no_vis
 """
 
 import sys
@@ -29,7 +29,7 @@ from typing import List, Optional, Dict, Any
 # Path setup: DA3 should be a sibling directory to MV-SAM3D
 # ============================================================================
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent  # MV-SAM3D root
+PROJECT_ROOT = SCRIPT_DIR.parents[3]  # MV-SAM3D root
 DA3_ROOT = PROJECT_ROOT.parent / "Depth-Anything-3"
 
 if not DA3_ROOT.exists():
@@ -276,13 +276,13 @@ def main():
         epilog="""
 Examples:
     # Basic usage
-    python scripts/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example
+    python scripts/python/da3/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example
     
     # Higher resolution
-    python scripts/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example --process_res 756
+    python scripts/python/da3/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example --process_res 756
     
     # Without visualization (faster)
-    python scripts/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example --no_vis
+    python scripts/python/da3/run_da3.py --image_dir ./data/example/images --output_dir ./da3_outputs/example --no_vis
         """
     )
     
@@ -336,4 +336,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

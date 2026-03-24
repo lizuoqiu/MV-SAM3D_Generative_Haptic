@@ -4,6 +4,9 @@ import json
 import subprocess
 from pathlib import Path
 
+ROOT_DIR = Path(__file__).resolve().parents[3]
+TASK2_FOR_OBJECT_SH = ROOT_DIR / "scripts/bash/thermal/run_task2_for_object.sh"
+
 
 def find_object_dirs(dataset_root: Path) -> list[Path]:
     out: list[Path] = []
@@ -31,13 +34,13 @@ def find_latest_recon_dir(visualization_root: Path, object_name: str, mask_name:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run Task-2 thermal mapping for all reconstructed objects.")
     parser.add_argument("--dataset-root", required=True)
-    parser.add_argument("--visualization-root", default="visualization")
+    parser.add_argument("--visualization-root", default=str(ROOT_DIR / "visualization"))
     parser.add_argument("--thermal-intrinsics", required=True)
-    parser.add_argument("--processed-root", default="processed_dataset")
+    parser.add_argument("--processed-root", default=str(ROOT_DIR / "processed_dataset"))
     parser.add_argument("--mask-name", default="sam2_masks")
     parser.add_argument("--rgb-to-thermal-transform", default=None)
     parser.add_argument("--exclude-object", action="append", default=[])
-    parser.add_argument("--report-json", default="processed_dataset/task2_batch_report.json")
+    parser.add_argument("--report-json", default=str(ROOT_DIR / "processed_dataset/task2_batch_report.json"))
     args = parser.parse_args()
 
     dataset_root = Path(args.dataset_root).resolve()
@@ -72,7 +75,7 @@ def main() -> None:
 
         cmd = [
             "bash",
-            "scripts/run_task2_for_object.sh",
+            str(TASK2_FOR_OBJECT_SH),
             str(obj),
             str(recon),
             str(thermal_intrinsics),

@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
 if [[ $# -lt 4 ]]; then
   cat <<'USAGE' >&2
 Usage:
-  scripts/run_task2_for_object.sh <object_dir> <reconstruction_dir> <thermal_intrinsics> <processed_root> [rgb_to_thermal_transform_json]
+  bash scripts/bash/thermal/run_task2_for_object.sh <object_dir> <reconstruction_dir> <thermal_intrinsics> <processed_root> [rgb_to_thermal_transform_json]
 
 Example:
-  scripts/run_task2_for_object.sh \
+  bash scripts/bash/thermal/run_task2_for_object.sh \
     data/datasets/generative_haptic_dataset_v2/Data_Mar6/bottleddrink_Mar7/bottleddrink1 \
     visualization/bottleddrink1/sam2_masks/bottleddrink1_sam2_masks_mv_s1a30_s2e30_20260313_033446 \
     thermal_intrinsics.yaml \
@@ -62,7 +64,7 @@ mkdir -p "${DA3_DIR}"
 
 if [[ ! -f "${DA3_OUT}" ]]; then
   echo "[task2] running DA3: ${OBJECT_DIR}/images"
-  python scripts/run_da3.py \
+  python "${ROOT_DIR}/scripts/python/da3/run_da3.py" \
     --image_dir "${OBJECT_DIR}/images" \
     --output_dir "${DA3_DIR}" \
     --no_vis
@@ -72,20 +74,20 @@ fi
 
 echo "[task2] composing thermal poses"
 if [[ -n "${RGB_TO_THERMAL_JSON}" ]]; then
-  python scripts/compose_thermal_poses_from_da3.py \
+  python "${ROOT_DIR}/scripts/python/thermal/compose_thermal_poses_from_da3.py" \
     --da3-output "${DA3_OUT}" \
     --view-mapping "${OBJECT_DIR}/view_mapping.json" \
     --output-json "${THERMAL_POSES}" \
     --rgb-to-thermal-transform "$(realpath "${RGB_TO_THERMAL_JSON}")"
 else
-  python scripts/compose_thermal_poses_from_da3.py \
+  python "${ROOT_DIR}/scripts/python/thermal/compose_thermal_poses_from_da3.py" \
     --da3-output "${DA3_OUT}" \
     --view-mapping "${OBJECT_DIR}/view_mapping.json" \
     --output-json "${THERMAL_POSES}"
 fi
 
 echo "[task2] thermal mapping (avg/max)"
-scripts/run_thermal_mapping.sh \
+"${ROOT_DIR}/scripts/bash/thermal/run_thermal_mapping.sh" \
   "${RECON_DIR}/result.ply" \
   "${OBJECT_DIR}/thermal" \
   "${THERMAL_INTRINSICS}" \
@@ -93,15 +95,15 @@ scripts/run_thermal_mapping.sh \
   "${THERMAL_PREFIX}"
 
 echo "[task2] summary visualization"
-python - <<'PY' "${OBJECT_DIR}" "${THERMAL_PREFIX}" "${SUMMARY_IMG}"
-import json
+python - <<'PY' "${ROOT_DIR}" "${OBJECT_DIR}" "${THERMAL_PREFIX}" "${SUMMARY_IMG}"
 from pathlib import Path
 import subprocess
 import sys
 
-obj = Path(sys.argv[1]).resolve()
-thermal_prefix = Path(sys.argv[2]).resolve()
-summary_img = Path(sys.argv[3]).resolve()
+root = Path(sys.argv[1]).resolve()
+obj = Path(sys.argv[2]).resolve()
+thermal_prefix = Path(sys.argv[3]).resolve()
+summary_img = Path(sys.argv[4]).resolve()
 
 rgb_files = sorted([p for p in (obj / "rgb").iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"}])
 th_files = sorted([p for p in (obj / "thermal").iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"}])
@@ -110,7 +112,7 @@ if not rgb_files or not th_files:
 
 cmd = [
     "python",
-    "scripts/visualize_task2_summary.py",
+    str(root / "scripts/python/thermal/visualize_task2_summary.py"),
     "--rgb-image", str(rgb_files[0]),
     "--thermal-image", str(th_files[0]),
     "--verify-avg", str(thermal_prefix.with_name(thermal_prefix.name + "_verify_avg.png")),
@@ -121,7 +123,7 @@ subprocess.run(cmd, check=True)
 PY
 
 echo "[task2] packaging to processed_dataset"
-python scripts/package_processed_object.py \
+python "${ROOT_DIR}/scripts/python/thermal/package_processed_object.py" \
   --object-dir "${OBJECT_DIR}" \
   --reconstruction-dir "${RECON_DIR}" \
   --processed-root "${PROCESSED_ROOT}" \

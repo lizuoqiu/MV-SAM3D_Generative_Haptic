@@ -42,7 +42,7 @@ class CrossAttentionLogger:
         enabled_stages: Optional[Sequence[str]] = None,
         layer_indices: Optional[Sequence[int]] = None,
         reduce_heads: bool = True,
-        save_coords: bool = False,  # 是否保存 SLAT 阶段的空间坐标（默认不保存）
+        save_coords: bool = False,  # Whether to save SLAT spatial coords (disabled by default).
     ) -> None:
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -68,9 +68,9 @@ class CrossAttentionLogger:
         self._current_branch: str = "unknown"  # 'cond', 'uncond', 'pm', etc.
         self._event_counter: Counter = Counter()
         
-        # 存储 SLAT 阶段的空间坐标 (coords)
+        # Cache SLAT-stage spatial coordinates (coords).
         self._slat_coords: Optional[torch.Tensor] = None
-        self._coords_saved: bool = False  # 避免重复保存
+        self._coords_saved: bool = False  # Avoid repeated save/log behavior.
 
     # ------------------------------------------------------------------ Public API
     def attach_to_pipeline(self, pipeline) -> None:
@@ -87,7 +87,7 @@ class CrossAttentionLogger:
         self._current_view = 0
         self._current_step[stage] = -1
         self._current_time[stage] = -1.0
-        # 重置该 stage 相关的 event counter，避免多次推理时 idx 累积
+        # Reset stage-specific event counters to avoid index accumulation across runs.
         keys_to_reset = [k for k in list(self._event_counter.keys()) if k[0] == stage]
         for k in keys_to_reset:
             del self._event_counter[k]
@@ -139,12 +139,12 @@ class CrossAttentionLogger:
             cross_attn = getattr(block, "cross_attn", None)
             if cross_attn is None:
                 continue
-            # MM-DiT (SS) 使用 ModuleDict 存多路 cross-attn，这里只关心 'shape' 对应的 cross-attn
+            # MM-DiT (SS) stores multiple cross-attn branches in a ModuleDict; only keep 'shape'.
             if isinstance(cross_attn, nn.ModuleDict):
                 for latent_name, sub in cross_attn.items():
                     if not isinstance(sub, MultiHeadAttention):
                         continue
-                    # 只记录 shape latent 的 cross-attention（大量 tokens，对应体素）
+                    # Record only shape latent cross-attention (many tokens, voxel-related).
                     if latent_name != "shape":
                         continue
                     hook = sub.register_forward_hook(
@@ -168,7 +168,7 @@ class CrossAttentionLogger:
         if stage not in self._patched_generators:
             original_generate_iter = generator.generate_iter
 
-            # 使用默认参数显式绑定 stage 和 generator，避免闭包捕获问题
+            # Bind stage/generator via default args to avoid closure-capture issues.
             def wrapped_generate_iter(
                 *args,
                 _stage=stage,
@@ -237,7 +237,7 @@ class CrossAttentionLogger:
                 return
             query, context = inputs[0], inputs[1]
             if self._current_step.get(stage, -1) < 0:
-                # 尚未进入任何有效的 diffusion step，跳过以避免 step-01
+                # No valid diffusion step yet; skip to avoid step-01 artifacts.
                 return
             with torch.no_grad():
                 attn = self._compute_attention(module, query, context)
@@ -307,8 +307,8 @@ class CrossAttentionLogger:
         batch = len(layouts)
         results = []
         
-        # ★ 保存 downsample 后的 coords（这才是和 attention 维度一致的 coords）
-        # 只在 SLAT 阶段且开启 save_coords 时保存
+        # Save downsampled coords (they match attention dimensions).
+        # Only for SLAT stage when save_coords is enabled.
         if (self._current_stage == "slat" and self.save_coords and 
             not self._coords_saved and hasattr(query_sparse, 'coords')):
             self._slat_coords = query_sparse.coords.detach().cpu().clone()
@@ -351,7 +351,7 @@ class CrossAttentionLogger:
     def _store_attention(
         self, stage: str, layer_idx: int, attn: torch.Tensor, latent_name: Optional[str] = None
     ) -> None:
-        # 只保留 cond 分支，避免 CFG 的 uncond / pm 噪声
+        # Keep only the cond branch to avoid CFG uncond/pm noise.
         if getattr(self, "_current_branch", "cond") not in ("cond", "unknown"):
             return
         attn_cpu = attn.detach().to(torch.float32).cpu()
@@ -378,15 +378,15 @@ class CrossAttentionLogger:
             "reduced_heads": self.reduce_heads,
         }
         
-        # 对于 SLAT 阶段，附加空间坐标信息（需要开启 save_coords 参数）
+        # For SLAT stage, optionally attach spatial coords when save_coords is enabled.
         if stage == "slat" and self.save_coords and self._slat_coords is not None:
-            # 验证维度一致性：coords.shape[0] 应该等于 attention 的 L_latent 维度
+            # Validate dimensional consistency: coords.shape[0] should match attention L_latent.
             L_latent = attn_cpu.shape[1]  # attention shape: [B, L_latent, L_cond]
             coords_count = self._slat_coords.shape[0]
             
             if coords_count == L_latent:
                 payload["coords"] = self._slat_coords
-                # 只在第一次保存时记录 coords 保存成功
+                # Log successful coord attachment only once.
                 if not self._coords_saved:
                     logger.info(
                         f"[CrossAttentionLogger] Including coords in SLAT attention files: "
@@ -394,7 +394,7 @@ class CrossAttentionLogger:
                     )
                     self._coords_saved = True
             else:
-                # 维度不匹配，记录警告但不保存 coords
+                # Dimension mismatch: warn once and skip coords.
                 if not self._coords_saved:
                     logger.warning(
                         f"[CrossAttentionLogger] Coords dimension mismatch! "
@@ -402,11 +402,10 @@ class CrossAttentionLogger:
                         f"Coords will NOT be saved. This might indicate coords were not "
                         f"properly downsampled or there's a bug in the pipeline."
                     )
-                    self._coords_saved = True  # 避免重复警告
+                    self._coords_saved = True  # Avoid duplicate warnings.
         
         torch.save(payload, filename)
         logger.info(
             f"[CrossAttentionLogger] Saved attention → {filename.name} "
             f"(stage={stage}, layer={layer_idx}, step={step}, view={view}, shape={tuple(attn_cpu.shape)})"
         )
-

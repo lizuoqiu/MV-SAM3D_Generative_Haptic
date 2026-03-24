@@ -15,22 +15,22 @@ Key features:
 
 Usage:
     # Basic weighted inference (both Stage 1 and Stage 2 weighted by default)
-    python run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3
+    python scripts/python/inference/run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3
     
     # Disable all weighting (simple average for both stages)
-    python run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
+    python scripts/python/inference/run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
         --no_stage1_weighting --no_stage2_weighting
     
     # Custom Stage 1 parameters
-    python run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
+    python scripts/python/inference/run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
         --stage1_entropy_alpha 80.0 --stage1_entropy_layer 9
     
     # Custom Stage 2 parameters
-    python run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
+    python scripts/python/inference/run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
         --stage2_entropy_alpha 80.0 --stage2_attention_layer 6
     
     # Use visibility weighting for Stage 2 (requires DA3)
-    python run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
+    python scripts/python/inference/run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
         --da3_output ./da3_outputs/example/da3_output.npz --stage2_weight_source visibility
 """
 import sys
@@ -46,7 +46,8 @@ import torch
 from loguru import logger
 
 # Import inference code
-sys.path.append("notebook")
+ROOT_DIR = Path(__file__).resolve().parents[3]
+sys.path.append(str(ROOT_DIR / "notebook"))
 from inference import Inference
 from load_images_and_masks import load_images_and_masks_from_path
 
@@ -1411,7 +1412,7 @@ def visualize_in_canonical_space(
         scale = float(scale)
     
     if output_path is None:
-        output_path = Path("visualization") / "canonical_view.glb"
+        output_path = ROOT_DIR / "visualization" / "canonical_view.glb"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
     logger.info(f"[Canonical Viz] Creating visualization in Y-up canonical space (GLB standard)")
@@ -1636,7 +1637,7 @@ def visualize_latent_visibility(
         return None
     
     if output_path is None:
-        output_path = Path("visualization") / "latent_visibility.glb"
+        output_path = ROOT_DIR / "visualization" / "latent_visibility.glb"
     
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -1894,7 +1895,7 @@ def get_output_dir(
     Example:
         visualization/quike/box/quike_box_multiview_s1ea60_s2entropy_a60_20231205_123456/
     """
-    visualization_dir = Path("visualization")
+    visualization_dir = ROOT_DIR / "visualization"
     
     # Level 1: Dataset name (last component of input_path)
     dataset_name = input_path.name if input_path.is_dir() else input_path.parent.name
@@ -2026,12 +2027,12 @@ def run_weighted_inference(
             merge_da3_glb: Merge SAM3D output with DA3 scene
             overlay_pointmap: Overlay SAM3D on View 0 pointmap
     """
-    config_path = f"checkpoints/{model_tag}/pipeline.yaml"
-    if not Path(config_path).exists():
+    config_path = ROOT_DIR / "checkpoints" / model_tag / "pipeline.yaml"
+    if not config_path.exists():
         raise FileNotFoundError(f"Model config file not found: {config_path}")
     
     logger.info(f"Loading model: {config_path}")
-    inference = Inference(config_path, compile=False)
+    inference = Inference(str(config_path), compile=False)
     
     if hasattr(inference._pipeline, 'rendering_engine'):
         if inference._pipeline.rendering_engine != "pytorch3d":
@@ -2067,7 +2068,7 @@ def run_weighted_inference(
         if not da3_path.exists():
             raise FileNotFoundError(
                 f"DA3 output file not found: {da3_path}\n"
-                f"Please run: python scripts/run_da3.py --image_dir <your_image_dir> --output_dir <output_dir>"
+                f"Please run: python scripts/python/da3/run_da3.py --image_dir <your_image_dir> --output_dir <output_dir>"
             )
         
         logger.info(f"Loading external pointmaps from DA3: {da3_path}")
@@ -2977,18 +2978,18 @@ def main():
         epilog="""
 Examples:
   # Basic weighted inference (both stages weighted by default)
-  python run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3
+  python scripts/python/inference/run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3
   
   # Disable all weighting (simple average for both stages)
-  python run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
+  python scripts/python/inference/run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
       --no_stage1_weighting --no_stage2_weighting
   
   # Only Stage 2 weighting (disable Stage 1)
-  python run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
+  python scripts/python/inference/run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
       --no_stage1_weighting
   
   # With visibility weighting (requires DA3)
-  python run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
+  python scripts/python/inference/run_inference_weighted.py --input_path ./data --mask_prompt stuffed_toy --image_names 0,1,2,3 \
       --da3_output ./da3_outputs/example/da3_output.npz --stage2_weight_source visibility
         """
     )
@@ -3132,4 +3133,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

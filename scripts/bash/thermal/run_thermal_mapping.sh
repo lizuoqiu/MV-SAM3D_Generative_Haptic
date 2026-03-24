@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
 if [[ $# -lt 5 ]]; then
   cat <<'USAGE' >&2
 Usage:
-  scripts/run_thermal_mapping.sh <mesh> <thermal_dir> <thermal_intrinsics> <thermal_poses_json> <output_prefix>
+  bash scripts/bash/thermal/run_thermal_mapping.sh <mesh> <thermal_dir> <thermal_intrinsics> <thermal_poses_json> <output_prefix>
 
 Example:
-  scripts/run_thermal_mapping.sh \
+  bash scripts/bash/thermal/run_thermal_mapping.sh \
     outputs/cup/mesh.ply \
     data/cup/thermal \
     thermal_intrinsics.yaml \
@@ -33,7 +35,7 @@ conda activate "${SAM3D_ENV}"
 set -u
 
 for mode in avg max; do
-  python scripts/map_thermal_to_mesh.py \
+  python "${ROOT_DIR}/scripts/python/thermal/map_thermal_to_mesh.py" \
     --mesh "${MESH}" \
     --thermal-dir "${THERMAL_DIR}" \
     --thermal-intrinsics "${THERMAL_INTRINSICS}" \
@@ -42,7 +44,7 @@ for mode in avg max; do
     --aggregation "${mode}" \
     --output-prefix "${OUT_PREFIX}"
 
-  python scripts/visualize_temperature_mapping.py \
+  python "${ROOT_DIR}/scripts/python/thermal/visualize_temperature_mapping.py" \
     --mesh "${OUT_PREFIX}_thermal_${mode}.ply" \
     --temperature "${OUT_PREFIX}_temperature_${mode}.npy" \
     --output "${OUT_PREFIX}_verify_${mode}.png"
